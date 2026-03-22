@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Hub - 50+ Multiplayer Games</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:linear-gradient(135deg,#0a0a2e,#1a1a4e,#0d0d3b);color:#fff;min-height:100vh}
+.hub{padding:20px;max-width:1200px;margin:0 auto}
+.hub h1{text-align:center;font-size:2.2rem;margin:20px 0;letter-spacing:3px;background:linear-gradient(90deg,#00d4ff,#7b2ff7,#ff6b6b);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.hub p.sub{text-align:center;color:#aaa;margin-bottom:30px;font-size:1.1rem}
+.search{display:block;margin:0 auto 25px;padding:12px 20px;width:100%;max-width:400px;border-radius:25px;border:2px solid #333;background:#111;color:#fff;font-size:1rem;outline:none}
+.search:focus{border-color:#7b2ff7}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:15px}
+.card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px;cursor:pointer;transition:all .25s;text-align:center}
+.card:hover{transform:translateY(-4px);background:rgba(255,255,255,0.12);border-color:#7b2ff7}
+.card .icon{font-size:2.5rem;margin-bottom:10px}
+.card .name{font-size:1rem;font-weight:600}
+.card .cat{font-size:.75rem;color:#888;margin-top:5px}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:#1a1a3e;border-radius:20px;padding:30px;max-width:420px;width:90%;text-align:center;border:1px solid #333}
+.modal h2{margin-bottom:8px;font-size:1.4rem}
+.modal p{color:#aaa;margin-bottom:20px;font-size:.95rem}
+.modal .players{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.modal .pbtn{width:55px;height:55px;border-radius:50%;border:2px solid #444;background:transparent;color:#fff;font-size:1.3rem;font-weight:700;cursor:pointer;transition:all .2s}
+.modal .pbtn:hover,.modal .pbtn.sel{border-color:#7b2ff7;background:#7b2ff733}
+.modal .go{padding:10px 40px;border:none;border-radius:25px;background:linear-gradient(135deg,#00d4ff,#7b2ff7);color:#fff;font-size:1rem;font-weight:600;cursor:pointer;letter-spacing:1px}
+.modal .go:hover{opacity:.85}
+.modal .go:disabled{opacity:.4;cursor:default}
+.back-btn{position:fixed;top:15px;left:15px;z-index:50;padding:8px 18px;border:none;border-radius:20px;background:#333;color:#fff;cursor:pointer;font-size:.9rem;display:none}
+.back-btn:hover{background:#555}
+#gameArea{display:none;padding:20px;max-width:900px;margin:0 auto;min-height:80vh}
+#gameArea h2{text-align:center;margin-bottom:5px;font-size:1.5rem}
+.turn-info{text-align:center;color:#f0c040;margin-bottom:15px;font-size:1.1rem;min-height:1.5em}
+.scoreboard{display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-bottom:20px}
+.scoreboard .ps{padding:6px 16px;border-radius:20px;font-weight:600;font-size:.9rem}
+.game-board{display:flex;flex-direction:column;align-items:center;gap:10px}
+.action-btn{padding:10px 30px;border:none;border-radius:20px;background:linear-gradient(135deg,#00d4ff,#7b2ff7);color:#fff;font-weight:600;cursor:pointer;font-size:1rem;margin:5px}
+.action-btn:hover{opacity:.85}
+.action-btn.secondary{background:#444}
+.action-btn:disabled{opacity:.4;cursor:default}
+.pcolors{--p1:#00d4ff;--p2:#ff6b6b;--p3:#4cff91;--p4:#ffd34e;--p5:#d46bff;--p6:#ff914d}
+</style>
+</head>
+<body class="pcolors">
+<button class="back-btn" id="backBtn" onclick="goHome()">← Back to Games</button>
+<div class="hub" id="hub">
+<h1>🎮 Game Hub</h1>
+<p class="sub">50+ Multiplayer Games — Pick a game and choose 2-6 players!</p>
+<input class="search" id="search" placeholder="Search games..." oninput="filterGames()">
+<div class="grid" id="grid"></div>
+</div>
+<div class="modal-bg" id="modalBg">
+<div class="modal">
+<h2 id="modalTitle">Game Name</h2>
+<p id="modalDesc">Description</p>
+<p style="color:#ccc;font-weight:600">Choose number of players:</p>
+<div class="players" id="playerBtns"></div>
+<button class="go" id="goBtn" disabled onclick="startGame()">Play!</button>
+</div>
+</div>
+<div id="gameArea"></div>
+<script>
+const PC=['#00d4ff','#ff6b6b','#4cff91','#ffd34e','#d46bff','#ff914d'];
+const PN=['Player 1','Player 2','Player 3','Player 4','Player 5','Player 6'];
+let selGame=null,selPlayers=0,scores=[],curPlayer=0,gameActive=false;
+
+function $(id){return document.getElementById(id)}
+function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min}
+
+function makeScoreboard(){
+  const sb=el('div','scoreboard');
+  for(let i=0;i<selPlayers;i++){
+    const s=el('div','ps',`${PN[i]}: <span id="sc${i}">${scores[i]}</span>`);
+    s.style.background=PC[i]+'33';s.style.border=`2px solid ${PC[i]}`;s.id=`ps${i}`;
+    sb.appendChild(s);
+  }
+  return sb;
+}
+function updateScore(i,v){scores[i]=v;const e=$(`sc${i}`);if(e)e.textContent=v}
+function highlightPlayer(){
+  for(let i=0;i<selPlayers;i++){
+    const e=$(`ps${i}`);
+    if(e)e.style.opacity=i===curPlayer?'1':'0.4';
+  }
+}
+function nextPlayer(){curPlayer=(curPlayer+1)%selPlayers;highlightPlayer()}
+function turnInfo(msg){const t=document.querySelector('.turn-info');if(t)t.textContent=msg}
+
+const GAMES=[
+{id:1,name:'Tic Tac Toe',icon:'❌⭕',cat:'Board',desc:'Classic 3x3 grid game',min:2,max:2,init:initTicTacToe},
+{id:2,name:'Connect Four',icon:'🔴🟡',cat:'Board',desc:'Drop discs, get 4 in a row',min:2,max:2,init:initConnectFour},
+{id:3,name:'Memory Match',icon:'🃏',cat:'Memory',desc:'Find matching pairs of cards',min:2,max:6,init:initMemory},
+{id:4,name:'Dice War',icon:'🎲',cat:'Dice',desc:'Roll dice, highest wins the round',min:2,max:6,init:initDiceWar},
+{id:5,name:'Pig Dice',icon:'🐷',cat:'Dice',desc:'Roll or hold, first to 100 wins',min:2,max:6,init:initPigDice},
+{id:6,name:'Rock Paper Scissors',icon:'✊✋✌️',cat:'Classic',desc:'Best of 5 rounds',min:2,max:2,init:initRPS},
+{id:7,name:'Math Battle',icon:'🧮',cat:'Quiz',desc:'Solve math problems fastest',min:2,max:6,init:initMathBattle},
+{id:8,name:'Trivia Quiz',icon:'🧠',cat:'Quiz',desc:'General knowledge questions',min:2,max:6,init:initTrivia},
+{id:9,name:'Number Guess',icon:'🔢',cat:'Guess',desc:'Guess the secret number 1-100',min:2,max:6,init:initNumberGuess},
+{id:10,name:'Higher or Lower',icon:'📊',cat:'Card',desc:'Predict if next card is higher/lower',min:2,max:6,init:initHigherLower},
+{id:11,name:'Speed Click',icon:'🖱️',cat:'Speed',desc:'Click the target as fast as you can',min:2,max:6,init:initSpeedClick},
+{id:12,name:'Reaction Race',icon:'⚡',cat:'Speed',desc:'Test your reaction time',min:2,max:6,init:initReaction},
+{id:13,name:'Color Memory',icon:'🎨',cat:'Memory',desc:'Remember the color sequence',min:2,max:6,init:initColorMemory},
+{id:14,name:'Word Scramble',icon:'🔤',cat:'Word',desc:'Unscramble the word first',min:2,max:6,init:initWordScramble},
+{id:15,name:'Hangman',icon:'💀',cat:'Word',desc:'Guess the word letter by letter',min:2,max:6,init:initHangman},
+{id:16,name:'Nim Game',icon:'🪨',cat:'Strategy',desc:'Avoid taking the last stone',min:2,max:2,init:initNim},
+{id:17,name:'Race to 100',icon:'🏁',cat:'Number',desc:'Add 1-10 each turn, reach 100 first',min:2,max:6,init:initRace100},
+{id:18,name:'Coin Flip War',icon:'🪙',cat:'Luck',desc:'Predict heads or tails',min:2,max:6,init:initCoinFlip},
+{id:19,name:'Lucky Sevens',icon:'🎰',cat:'Dice',desc:'Roll 2 dice, 7 wins big!',min:2,max:6,init:initLucky7},
+{id:20,name:'Snake Eyes',icon:'🐍',cat:'Dice',desc:'Roll but avoid snake eyes!',min:2,max:6,init:initSnakeEyes},
+{id:21,name:'Greedy Dice',icon:'💰',cat:'Dice',desc:'Push your luck with dice rolls',min:2,max:6,init:initGreedyDice},
+{id:22,name:'Card War',icon:'🃏⚔️',cat:'Card',desc:'Higher card wins the round',min:2,max:6,init:initCardWar},
+{id:23,name:'Blackjack',icon:'🂡',cat:'Card',desc:'Get closest to 21 without busting',min:2,max:6,init:initBlackjack},
+{id:24,name:'Horse Race',icon:'🏇',cat:'Dice',desc:'Roll dice to race your horse',min:2,max:6,init:initHorseRace},
+{id:25,name:'Beetle Drive',icon:'🪲',cat:'Dice',desc:'Roll to complete your beetle',min:2,max:6,init:initBeetleDrive},
+{id:26,name:'Target Number',icon:'🎯',cat:'Number',desc:'Combine numbers to reach target',min:2,max:6,init:initTargetNumber},
+{id:27,name:'Multiplication Race',icon:'✖️',cat:'Quiz',desc:'Multiply fast to score points',min:2,max:6,init:initMultRace},
+{id:28,name:'Typing Speed',icon:'⌨️',cat:'Speed',desc:'Type the word fastest',min:2,max:6,init:initTypingSpeed},
+{id:29,name:'Emoji Match',icon:'😀',cat:'Memory',desc:'Find matching emoji pairs',min:2,max:6,init:initEmojiMatch},
+{id:30,name:'Pattern Match',icon:'🔷',cat:'Memory',desc:'Repeat the growing pattern',min:2,max:6,init:initPatternMatch},
+{id:31,name:'Countdown',icon:'⏱️',cat:'Number',desc:'Count down from 21, avoid 0',min:2,max:6,init:initCountdown},
+{id:32,name:'Word Builder',icon:'📝',cat:'Word',desc:'Make longest word from letters',min:2,max:6,init:initWordBuilder},
+{id:33,name:'Science Quiz',icon:'🔬',cat:'Quiz',desc:'Test your science knowledge',min:2,max:6,init:initScienceQuiz},
+{id:34,name:'History Quiz',icon:'📜',cat:'Quiz',desc:'Test your history knowledge',min:2,max:6,init:initHistoryQuiz},
+{id:35,name:'Geography Quiz',icon:'🌍',cat:'Quiz',desc:'World geography questions',min:2,max:6,init:initGeoQuiz},
+{id:36,name:'Movie Quiz',icon:'🎬',cat:'Quiz',desc:'Guess the movie',min:2,max:6,init:initMovieQuiz},
+{id:37,name:'Sports Quiz',icon:'⚽',cat:'Quiz',desc:'Sports trivia questions',min:2,max:6,init:initSportsQuiz},
+{id:38,name:'Animal Quiz',icon:'🦁',cat:'Quiz',desc:'Animal kingdom trivia',min:2,max:6,init:initAnimalQuiz},
+{id:39,name:'Food Quiz',icon:'🍕',cat:'Quiz',desc:'Food & cooking trivia',min:2,max:6,init:initFoodQuiz},
+{id:40,name:'Music Quiz',icon:'🎵',cat:'Quiz',desc:'Music trivia questions',min:2,max:6,init:initMusicQuiz},
+{id:41,name:'Dice Poker',icon:'🎲🃏',cat:'Dice',desc:'Best poker hand with 5 dice',min:2,max:6,init:initDicePoker},
+{id:42,name:'Bulls & Cows',icon:'🐂',cat:'Strategy',desc:'Crack the secret 4-digit code',min:2,max:2,init:initBullsCows},
+{id:43,name:'Dots & Boxes',icon:'⬜',cat:'Board',desc:'Complete boxes on a grid',min:2,max:6,init:initDotsBoxes},
+{id:44,name:'Treasure Hunt',icon:'💎',cat:'Board',desc:'Search the grid for treasure',min:2,max:6,init:initTreasureHunt},
+{id:45,name:'Sequence Memory',icon:'🔢',cat:'Memory',desc:'Remember the number sequence',min:2,max:6,init:initSequenceMemory},
+{id:46,name:'Quick Draw',icon:'🎨',cat:'Speed',desc:'Click appearing targets quickly',min:2,max:6,init:initQuickDraw},
+{id:47,name:'Spelling Bee',icon:'🐝',cat:'Word',desc:'Spell the word correctly',min:2,max:6,init:initSpellingBee},
+{id:48,name:'Hot Potato',icon:'🥔',cat:'Party',desc:'Pass before the timer runs out!',min:2,max:6,init:initHotPotato},
+{id:49,name:'Bingo',icon:'🅱️',cat:'Party',desc:'First to complete a line wins',min:2,max:6,init:initBingo},
+{id:50,name:'Reflex Battle',icon:'💥',cat:'Speed',desc:'Press your key when prompted',min:2,max:6,init:initReflex},
+{id:51,name:'Addition Race',icon:'➕',cat:'Quiz',desc:'Add numbers to score fastest',min:2,max:6,init:initAdditionRace},
+{id:52,name:'Ludo Race',icon:'🎲🏠',cat:'Board',desc:'Race around the board',min:2,max:6,init:initLudoRace}
+];
+
+function renderHub(){
+  const g=$('grid');g.innerHTML='';
+  const q=$('search').value.toLowerCase();
+  GAMES.filter(x=>x.name.toLowerCase().includes(q)||x.cat.toLowerCase().includes(q)).forEach(gm=>{
+    const c=el('div','card',`<div class="icon">${gm.icon}</div><div class="name">${gm.name}</div><div class="cat">${gm.cat}</div>`);
+    c.onclick=()=>openModal(gm);
+    g.appendChild(c);
+  });
+}
+function filterGames(){renderHub()}
+
+function openModal(gm){
+  selGame=gm;selPlayers=0;
+  $('modalTitle').textContent=gm.icon+' '+gm.name;
+  $('modalDesc').textContent=gm.desc;
+  const pb=$('playerBtns');pb.innerHTML='';
+  for(let i=gm.min;i<=gm.max;i++){
+    const b=el('button','pbtn',i);
+    b.onclick=()=>{selPlayers=i;pb.querySelectorAll('.pbtn').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');$('goBtn').disabled=false};
+    pb.appendChild(b);
+  }
+  $('goBtn').disabled=true;
+  $('modalBg').classList.add('show');
+}
+$('modalBg').addEventListener('click',e=>{if(e.target===$('modalBg'))$('modalBg').classList.remove('show')});
+
+function startGame(){
+  $('modalBg').classList.remove('show');
+  $('hub').style.display='none';
+  $('gameArea').style.display='block';
+  $('backBtn').style.display='block';
+  scores=Array(selPlayers).fill(0);curPlayer=0;gameActive=true;
+  selGame.init();
+}
+function goHome(){
+  gameActive=false;
+  $('hub').style.display='block';
+  $('gameArea').style.display='none';
+  $('backBtn').style.display='none';
+  $('gameArea').innerHTML='';
+}
+function winScreen(msg){
+  gameActive=false;
+  const d=el('div','',`<div style="text-align:center;margin-top:30px"><h2 style="font-size:1.8rem;margin-bottom:10px">🏆 ${msg}</h2><button class="action-btn" onclick="selGame.init()">Play Again</button> <button class="action-btn secondary" onclick="goHome()">Back to Hub</button></div>`);
+  $('gameArea').appendChild(d);
+}
+function getWinner(){let mx=Math.max(...scores);let wi=scores.reduce((a,v,i)=>v===mx?[...a,i]:a,[]);return wi.length===1?PN[wi[0]]:'Tie!';}
+
+// === QUIZ ENGINE (shared by all quiz games) ===
+function initQuizGame(title,questions){
+  const ga=$('gameArea');ga.innerHTML='';
+  scores=Array(selPlayers).fill(0);curPlayer=0;
+  let qi=0;const qs=shuffle([...questions]).slice(0,10);
+  ga.appendChild(el('h2','',title));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=qs.length){winScreen(getWinner()+' wins!');return}
+    board.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Question ${qi+1}/${qs.length}`);
+    const q=qs[qi];
+    board.appendChild(el('div','',`<p style="font-size:1.2rem;margin:15px 0;text-align:center">${q.q}</p>`));
+    const opts=el('div','',);opts.style.cssText='display:flex;flex-direction:column;gap:10px;width:100%;max-width:400px';
+    q.o.forEach((o,i)=>{
+      const b=el('button','action-btn',o);
+      b.style.background=i%2===0?'linear-gradient(135deg,#00d4ff,#7b2ff7)':'linear-gradient(135deg,#7b2ff7,#ff6b6b)';
+      b.onclick=()=>{
+        if(i===q.a){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem;text-align:center">✅ Correct! +1 point</p>`}
+        else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem;text-align:center">❌ Wrong! Answer: ${q.o[q.a]}</p>`}
+        qi++;nextPlayer();setTimeout(showQ,1500);
+      };
+      opts.appendChild(b);
+    });
+    board.appendChild(opts);
+  }
+  showQ();
+}
+
+// =================== GAME IMPLEMENTATIONS ===================
+
+// 1. Tic Tac Toe
+function initTicTacToe(){
+  const ga=$('gameArea');ga.innerHTML='';scores=[0,0];curPlayer=0;
+  const marks=['X','O'];
+  let state=Array(9).fill('');
+  ga.appendChild(el('h2','','Tic Tac Toe'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const grid=el('div','');grid.style.cssText='display:grid;grid-template-columns:repeat(3,90px);gap:6px';
+  board.appendChild(grid);
+  const wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  function render(){
+    grid.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn (${marks[curPlayer]})`);
+    for(let i=0;i<9;i++){
+      const c=el('div','',state[i]);
+      c.style.cssText=`width:90px;height:90px;display:flex;align-items:center;justify-content:center;font-size:2.2rem;font-weight:700;background:rgba(255,255,255,.08);border-radius:12px;cursor:pointer;color:${state[i]==='X'?PC[0]:PC[1]}`;
+      if(!state[i])c.onclick=()=>{state[i]=marks[curPlayer];const w=wins.find(c=>c.every(j=>state[j]===marks[curPlayer]));if(w){updateScore(curPlayer,scores[curPlayer]+1);render();turnInfo(`${PN[curPlayer]} wins!`);setTimeout(()=>winScreen(`${PN[curPlayer]} wins!`),1000);return}if(state.every(x=>x)){render();turnInfo("It's a draw!");setTimeout(()=>winScreen("It's a draw!"),1000);return}nextPlayer();render()};
+      grid.appendChild(c);
+    }
+  }
+  render();
+}
+
+// 2. Connect Four
+function initConnectFour(){
+  const ga=$('gameArea');ga.innerHTML='';scores=[0,0];curPlayer=0;
+  const R=6,C=7;let grid=Array.from({length:R},()=>Array(C).fill(-1));let done=false;
+  ga.appendChild(el('h2','','Connect Four'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const tbl=el('div','');tbl.style.cssText='display:grid;grid-template-columns:repeat(7,55px);gap:4px';board.appendChild(tbl);
+  function check(r,c,dr,dc){const p=grid[r][c];if(p<0)return false;for(let i=1;i<4;i++){const nr=r+dr*i,nc=c+dc*i;if(nr<0||nr>=R||nc<0||nc>=C||grid[nr][nc]!==p)return false}return true}
+  function hasWin(){for(let r=0;r<R;r++)for(let c=0;c<C;c++)for(const[dr,dc]of[[0,1],[1,0],[1,1],[1,-1]])if(check(r,c,dr,dc))return grid[r][c];return-1}
+  function render(){
+    tbl.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn`);
+    for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+      const cell=el('div','');
+      cell.style.cssText=`width:55px;height:55px;border-radius:50%;background:${grid[r][c]>=0?PC[grid[r][c]]:'rgba(255,255,255,.08)'};cursor:pointer;transition:background .2s`;
+      const cc=c;
+      cell.onclick=()=>{if(done)return;for(let rr=R-1;rr>=0;rr--)if(grid[rr][cc]<0){grid[rr][cc]=curPlayer;const w=hasWin();if(w>=0){done=true;updateScore(w,scores[w]+1);render();turnInfo(`${PN[w]} wins!`);setTimeout(()=>winScreen(`${PN[w]} wins!`),1200);return}if(grid.every(row=>row.every(v=>v>=0))){done=true;render();setTimeout(()=>winScreen("It's a draw!"),1000);return}nextPlayer();render();return}};
+      tbl.appendChild(cell);
+    }
+  }
+  render();
+}
+
+// 3. Memory Match
+function initMemory(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const syms=['🍎','🍊','🍋','🍇','🍉','🍓','🫐','🥝','🍑','🥭','🍍','🥥','🍌','🍒','🥑','🍆','🌽','🥕'];
+  const n=8;const cards=shuffle([...syms.slice(0,n),...syms.slice(0,n)]);
+  let revealed=Array(cards.length).fill(false),flipped=[],busy=false;
+  ga.appendChild(el('h2','','Memory Match'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const grid=el('div','');grid.style.cssText='display:grid;grid-template-columns:repeat(4,75px);gap:8px';board.appendChild(grid);
+  function render(){
+    grid.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn`);
+    cards.forEach((s,i)=>{
+      const c=el('div','',revealed[i]?s:'?');
+      c.style.cssText=`width:75px;height:75px;display:flex;align-items:center;justify-content:center;font-size:${revealed[i]?'2rem':'1.5rem'};background:${revealed[i]?'rgba(255,255,255,.15)':'rgba(255,255,255,.06)'};border-radius:12px;cursor:pointer;border:2px solid ${revealed[i]?'#7b2ff7':'transparent'}`;
+      if(!revealed[i]&&!busy)c.onclick=()=>{
+        if(flipped.length>=2||flipped.includes(i))return;
+        revealed[i]=true;flipped.push(i);render();
+        if(flipped.length===2){
+          busy=true;
+          setTimeout(()=>{
+            if(cards[flipped[0]]===cards[flipped[1]]){updateScore(curPlayer,scores[curPlayer]+1)}
+            else{revealed[flipped[0]]=false;revealed[flipped[1]]=false;nextPlayer()}
+            flipped=[];busy=false;
+            if(revealed.every(x=>x)){winScreen(getWinner()+' wins!')}else render();
+          },800);
+        }
+      };
+      grid.appendChild(c);
+    });
+  }
+  render();
+}
+
+// 4. Dice War
+function initDiceWar(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);let round=0,maxR=5;
+  ga.appendChild(el('h2','','Dice War'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;turnInfo(`Round ${round}/${maxR} — Everyone rolls!`);
+    board.innerHTML='';
+    const b=el('button','action-btn','🎲 Roll All Dice!');
+    b.onclick=()=>{
+      const rolls=Array.from({length:selPlayers},()=>rand(1,6));
+      let mx=Math.max(...rolls);
+      let res='';
+      rolls.forEach((r,i)=>{
+        res+=`<div style="margin:8px;font-size:1.2rem"><span style="color:${PC[i]};font-weight:700">${PN[i]}</span>: 🎲 ${r} ${r===mx?'⭐':''}</div>`;
+        if(r===mx)updateScore(i,scores[i]+1);
+      });
+      board.innerHTML=res;
+      const nb=el('button','action-btn','Next Round →');nb.onclick=doRound;board.appendChild(nb);
+    };
+    board.appendChild(b);
+  }
+  doRound();
+}
+
+// 5. Pig Dice
+function initPigDice(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let turnTotal=0;
+  ga.appendChild(el('h2','','Pig Dice'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    board.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Turn total: ${turnTotal}`);
+    const rb=el('button','action-btn','🎲 Roll');
+    const hb=el('button','action-btn secondary','✋ Hold');
+    rb.onclick=()=>{
+      const r=rand(1,6);
+      if(r===1){turnTotal=0;board.innerHTML=`<p style="color:#ff6b6b;font-size:1.5rem">🎲 Rolled 1! Lost turn total!</p>`;nextPlayer();setTimeout(render,1200)}
+      else{turnTotal+=r;board.innerHTML=`<p style="font-size:1.5rem">🎲 Rolled ${r}! Turn total: ${turnTotal}</p>`;
+        const rb2=el('button','action-btn','🎲 Roll Again');const hb2=el('button','action-btn secondary','✋ Hold');
+        rb2.onclick=rb.onclick;hb2.onclick=hb.onclick;board.appendChild(rb2);board.appendChild(hb2);
+      }
+    };
+    hb.onclick=()=>{updateScore(curPlayer,scores[curPlayer]+turnTotal);turnTotal=0;if(scores[curPlayer]>=100){winScreen(`${PN[curPlayer]} wins with ${scores[curPlayer]} points!`);return}nextPlayer();render()};
+    board.appendChild(rb);board.appendChild(hb);
+  }
+  render();
+}
+
+// 6. Rock Paper Scissors
+function initRPS(){
+  const ga=$('gameArea');ga.innerHTML='';scores=[0,0];let round=0,maxR=5;
+  const opts=['🪨 Rock','📄 Paper','✂️ Scissors'];
+  ga.appendChild(el('h2','','Rock Paper Scissors'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  let choices=[];
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;choices=[];askPlayer(0);
+  }
+  function askPlayer(p){
+    board.innerHTML='';turnInfo(`Round ${round}/${maxR} — ${PN[p]}, choose! (other player look away)`);
+    opts.forEach((o,i)=>{
+      const b=el('button','action-btn',o);b.onclick=()=>{choices.push(i);if(choices.length<2)askPlayer(1);else resolve()};board.appendChild(b);
+    });
+  }
+  function resolve(){
+    const[a,b]=choices;
+    let msg;
+    if(a===b)msg="It's a tie!";
+    else if((a===0&&b===2)||(a===1&&b===0)||(a===2&&b===1)){updateScore(0,scores[0]+1);msg=`${PN[0]} wins this round!`}
+    else{updateScore(1,scores[1]+1);msg=`${PN[1]} wins this round!`}
+    board.innerHTML=`<p style="font-size:1.3rem;text-align:center">${PN[0]}: ${opts[a]} vs ${PN[1]}: ${opts[b]}<br>${msg}</p>`;
+    const nb=el('button','action-btn','Next Round →');nb.onclick=doRound;board.appendChild(nb);
+  }
+  doRound();
+}
+
+// 7. Math Battle
+function initMathBattle(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let qi=0,maxQ=10;
+  ga.appendChild(el('h2','','Math Battle'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=maxQ){winScreen(getWinner()+' wins!');return}
+    qi++;highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Question ${qi}/${maxQ}`);
+    board.innerHTML='';
+    const a=rand(2,20),b=rand(2,20),ops=['+','-','×'];const op=ops[rand(0,2)];
+    let ans;if(op==='+')ans=a+b;else if(op==='-')ans=a-b;else ans=a*b;
+    const wrong=[ans+rand(1,5),ans-rand(1,5),ans+rand(6,10)].map(x=>x===ans?x+1:x);
+    const all=shuffle([ans,...wrong]);
+    board.appendChild(el('div','',`<p style="font-size:2rem;text-align:center;margin:20px">${a} ${op} ${b} = ?</p>`));
+    const opts=el('div','');opts.style.cssText='display:flex;gap:10px;flex-wrap:wrap;justify-content:center';
+    all.forEach(o=>{
+      const b2=el('button','action-btn',o);
+      b2.onclick=()=>{if(o===ans){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem;text-align:center">✅ Correct!</p>`}else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem;text-align:center">❌ Answer: ${ans}</p>`}nextPlayer();setTimeout(showQ,1200)};
+      opts.appendChild(b2);
+    });
+    board.appendChild(opts);
+  }
+  showQ();
+}
+
+// 8. Trivia Quiz
+function initTrivia(){
+  initQuizGame('Trivia Quiz',[
+    {q:'What planet is known as the Red Planet?',o:['Mars','Venus','Jupiter','Saturn'],a:0},
+    {q:'How many continents are there?',o:['5','6','7','8'],a:2},
+    {q:'What is the largest ocean?',o:['Atlantic','Pacific','Indian','Arctic'],a:1},
+    {q:'Who painted the Mona Lisa?',o:['Van Gogh','Picasso','Da Vinci','Monet'],a:2},
+    {q:'What is the chemical symbol for gold?',o:['Go','Gd','Au','Ag'],a:2},
+    {q:'What year did World War II end?',o:['1943','1944','1945','1946'],a:2},
+    {q:'What is the smallest country?',o:['Monaco','Vatican City','Malta','Liechtenstein'],a:1},
+    {q:'How many bones in the human body?',o:['106','206','306','186'],a:1},
+    {q:'What is the fastest land animal?',o:['Lion','Cheetah','Gazelle','Horse'],a:1},
+    {q:'What language has the most speakers?',o:['English','Spanish','Hindi','Mandarin'],a:3},
+    {q:'What is the hardest natural substance?',o:['Gold','Iron','Diamond','Platinum'],a:2},
+    {q:'Which planet has the most moons?',o:['Jupiter','Saturn','Uranus','Neptune'],a:1}
+  ]);
+}
+
+// 9. Number Guess
+function initNumberGuess(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const secret=rand(1,100);let attempts=0;
+  ga.appendChild(el('h2','','Number Guess (1-100)'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const info=el('div','','');board.appendChild(info);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Guess the number!`);
+    const inp=el('input','','');inp.type='number';inp.min=1;inp.max=100;inp.placeholder='1-100';
+    inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:120px;text-align:center';
+    const b=el('button','action-btn','Guess');
+    b.onclick=()=>{
+      const g=parseInt(inp.value);if(isNaN(g))return;attempts++;
+      if(g===secret){updateScore(curPlayer,10-Math.min(attempts,9));info.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">🎉 ${PN[curPlayer]} got it! The number was ${secret}! (${attempts} total guesses)</p>`;winScreen(`${PN[curPlayer]} guessed it in round ${Math.ceil(attempts/selPlayers)}!`)}
+      else if(g<secret){info.innerHTML=`<p style="color:#ffd34e;font-size:1.1rem">📈 ${g} is too LOW!</p>`;nextPlayer();render()}
+      else{info.innerHTML=`<p style="color:#ffd34e;font-size:1.1rem">📉 ${g} is too HIGH!</p>`;nextPlayer();render()}
+    };
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;margin-top:15px;align-items:center;justify-content:center';
+    row.appendChild(inp);row.appendChild(b);
+    board.querySelectorAll('.guess-row')?.forEach(x=>x.remove());
+    row.className='guess-row';board.appendChild(row);
+    inp.focus();inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+  }
+  render();
+}
+
+// 10. Higher or Lower
+function initHigherLower(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let round=0,maxR=8;
+  ga.appendChild(el('h2','','Higher or Lower'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;const cur=rand(1,13);
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Round ${round}/${maxR}`);
+    board.innerHTML=`<div style="font-size:3rem;margin:20px">🃏 ${cur}</div><p>Is the next card Higher or Lower?</p>`;
+    const hb=el('button','action-btn','⬆️ Higher');const lb=el('button','action-btn','⬇️ Lower');
+    function pick(choice){
+      const next=rand(1,13);
+      const correct=(choice==='h'&&next>cur)||(choice==='l'&&next<cur)||(next===cur);
+      if(correct)updateScore(curPlayer,scores[curPlayer]+1);
+      board.innerHTML=`<div style="font-size:3rem;margin:20px">🃏 ${cur} → 🃏 ${next}</div><p style="color:${correct?'#4cff91':'#ff6b6b'}">${correct?'✅ Correct!':'❌ Wrong!'}</p>`;
+      nextPlayer();const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    }
+    hb.onclick=()=>pick('h');lb.onclick=()=>pick('l');
+    board.appendChild(hb);board.appendChild(lb);
+  }
+  doRound();
+}
+
+// 11. Speed Click
+function initSpeedClick(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  ga.appendChild(el('h2','','Speed Click'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doTurn(){
+    if(curPlayer>=selPlayers&&scores.some(s=>s>0)){winScreen(getWinner()+' wins (most clicks)!');return}
+    if(curPlayer>=selPlayers){curPlayer=0}
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Click as fast as you can for 5 seconds!`);
+    board.innerHTML='';let count=0;
+    const target=el('button','action-btn','🎯 CLICK ME! (0)');target.style.cssText+='width:200px;height:200px;font-size:1.3rem;border-radius:50%';
+    target.onclick=()=>{count++;target.textContent=`🎯 CLICK ME! (${count})`};
+    board.appendChild(target);
+    setTimeout(()=>{updateScore(curPlayer,count);board.innerHTML=`<p style="font-size:1.3rem">${PN[curPlayer]} clicked ${count} times!</p>`;
+      curPlayer++;const nb=el('button','action-btn',curPlayer<selPlayers?`${PN[curPlayer]}'s Turn →`:'See Results');nb.onclick=doTurn;board.appendChild(nb)},5000);
+  }
+  doTurn();
+}
+
+// 12. Reaction Race
+function initReaction(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  ga.appendChild(el('h2','','Reaction Race'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doTurn(){
+    if(curPlayer>=selPlayers){
+      let best=Math.min(...scores.filter(s=>s>0));
+      let wi=scores.indexOf(best);
+      winScreen(`${PN[wi]} wins with ${best}ms reaction time!`);return;
+    }
+    highlightPlayer();turnInfo(`${PN[curPlayer]} — Wait for GREEN then click!`);
+    board.innerHTML='';
+    const box=el('div','','Wait...');box.style.cssText='width:300px;height:200px;background:#ff4444;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;cursor:pointer';
+    let startTime,canClick=false,tooEarly=false;
+    const delay=rand(1500,4000);
+    const t=setTimeout(()=>{box.style.background='#44ff44';box.textContent='CLICK NOW!';box.style.color='#000';startTime=Date.now();canClick=true},delay);
+    box.onclick=()=>{
+      if(!canClick){clearTimeout(t);tooEarly=true;box.textContent='Too early! +9999ms penalty';box.style.background='#ff8800';updateScore(curPlayer,9999);curPlayer++;setTimeout(doTurn,1500);return}
+      if(tooEarly)return;
+      const ms=Date.now()-startTime;updateScore(curPlayer,ms);
+      box.textContent=`${ms}ms!`;curPlayer++;setTimeout(doTurn,1500);
+    };
+    board.appendChild(box);
+  }
+  doTurn();
+}
+
+// 13. Color Memory
+function initColorMemory(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const colors=['#ff4444','#44ff44','#4444ff','#ffff44','#ff44ff','#44ffff','#ff8800','#8800ff'];
+  ga.appendChild(el('h2','','Color Memory'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  let seq=[],round=0;
+  function addToSeq(){seq.push(colors[rand(0,colors.length-1)])}
+  function doRound(){
+    round++;addToSeq();highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Watch the sequence! (${seq.length} colors)`);
+    board.innerHTML=`<div id="colorBox" style="width:150px;height:150px;border-radius:20px;background:#333;margin:20px auto"></div>`;
+    let i=0;
+    const iv=setInterval(()=>{
+      $('colorBox').style.background=seq[i];
+      setTimeout(()=>{if($('colorBox'))$('colorBox').style.background='#333'},500);
+      i++;if(i>=seq.length){clearInterval(iv);setTimeout(askRepeat,700)}
+    },800);
+  }
+  function askRepeat(){
+    turnInfo(`${PN[curPlayer]}: Repeat the ${seq.length} colors!`);
+    let userSeq=[];
+    const btns=el('div','');btns.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:center';
+    colors.forEach(c=>{
+      const b=el('div','');b.style.cssText=`width:50px;height:50px;border-radius:12px;background:${c};cursor:pointer`;
+      b.onclick=()=>{
+        userSeq.push(c);
+        if(userSeq[userSeq.length-1]!==seq[userSeq.length-1]){
+          turnInfo(`❌ ${PN[curPlayer]} got it wrong at step ${userSeq.length}!`);
+          updateScore(curPlayer,round-1);nextPlayer();seq=[];round=0;setTimeout(doRound,1200);return;
+        }
+        if(userSeq.length===seq.length){
+          updateScore(curPlayer,round);
+          turnInfo(`✅ ${PN[curPlayer]} got it right!`);
+          if(round>=8){winScreen(getWinner()+' wins!');return}
+          nextPlayer();setTimeout(doRound,1200);
+        }
+      };
+      btns.appendChild(b);
+    });
+    board.innerHTML='';board.appendChild(btns);
+  }
+  doRound();
+}
+
+// 14. Word Scramble
+function initWordScramble(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let qi=0,maxQ=8;
+  const words=['PLANET','GUITAR','BRIDGE','CASTLE','FRIEND','GARDEN','MARKET','SCHOOL','WINTER','SUMMER','ORANGE','PURPLE','SILVER','GOLDEN'];
+  const pool=shuffle([...words]);
+  ga.appendChild(el('h2','','Word Scramble'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=maxQ){winScreen(getWinner()+' wins!');return}
+    const word=pool[qi%pool.length];const scrambled=shuffle(word.split('')).join('');
+    qi++;highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Unscramble this!`);
+    board.innerHTML=`<p style="font-size:2.5rem;letter-spacing:8px;margin:20px">${scrambled}</p>`;
+    const inp=el('input','','');inp.type='text';inp.placeholder='Your answer';
+    inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:200px;text-align:center';
+    const b=el('button','action-btn','Submit');
+    b.onclick=()=>{
+      if(inp.value.toUpperCase()===word){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct! ${word}</p>`}
+      else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ It was ${word}</p>`}
+      nextPlayer();setTimeout(showQ,1500);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center';
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  showQ();
+}
+
+// 15. Hangman
+function initHangman(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const words=['JAVASCRIPT','ELEPHANT','COMPUTER','MOUNTAIN','DINOSAUR','BUTTERFLY','CHOCOLATE','ADVENTURE','ASTRONAUT','PINEAPPLE'];
+  let word=words[rand(0,words.length-1)],guessed=new Set(),wrong=0,maxWrong=6;
+  ga.appendChild(el('h2','','Hangman'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — ${wrong}/${maxWrong} wrong`);
+    board.innerHTML='';
+    const display=word.split('').map(c=>guessed.has(c)?c:'_').join(' ');
+    board.appendChild(el('div','',`<p style="font-size:2rem;letter-spacing:6px;margin:20px;font-family:monospace">${display}</p>`));
+    const parts=['😵','👤','🤚','🤚','🦶','🦶'];
+    board.appendChild(el('div','',`<p style="font-size:2rem">${parts.slice(0,wrong).join('')}</p>`));
+    if(!display.includes('_')){updateScore(curPlayer,scores[curPlayer]+1);winScreen(`${PN[curPlayer]} guessed "${word}"!`);return}
+    if(wrong>=maxWrong){winScreen(`Game over! Word was "${word}"`);return}
+    const keys=el('div','');keys.style.cssText='display:flex;flex-wrap:wrap;gap:5px;justify-content:center;max-width:400px';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(l=>{
+      const b=el('button','',l);b.style.cssText=`width:36px;height:36px;border-radius:8px;border:1px solid #444;background:${guessed.has(l)?'#333':'rgba(255,255,255,.1)'};color:${guessed.has(l)?'#666':'#fff'};cursor:pointer;font-weight:700`;
+      if(!guessed.has(l))b.onclick=()=>{guessed.add(l);if(!word.includes(l)){wrong++;nextPlayer()}render()};
+      keys.appendChild(b);
+    });
+    board.appendChild(keys);
+  }
+  render();
+}
+
+// 16. Nim Game
+function initNim(){
+  const ga=$('gameArea');ga.innerHTML='';scores=[0,0];curPlayer=0;
+  let stones=rand(15,25);
+  ga.appendChild(el('h2','','Nim Game'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — ${stones} stones left`);
+    board.innerHTML=`<p style="font-size:2rem;margin:15px">${'🪨'.repeat(stones)}</p>`;
+    const btns=el('div','');btns.style.cssText='display:flex;gap:10px';
+    [1,2,3].forEach(n=>{
+      if(n<=stones){const b=el('button','action-btn',`Take ${n}`);b.onclick=()=>{stones-=n;if(stones<=0){turnInfo(`${PN[curPlayer]} took the last stone and loses!`);updateScore(1-curPlayer,1);setTimeout(()=>winScreen(`${PN[1-curPlayer]} wins!`),1000)}else{nextPlayer();render()}};btns.appendChild(b)}
+    });
+    board.appendChild(btns);
+  }
+  render();
+}
+
+// 17. Race to 100
+function initRace100(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let total=0;
+  ga.appendChild(el('h2','','Race to 100'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Total: ${total}/100`);
+    board.innerHTML=`<div style="width:300px;height:25px;background:#222;border-radius:12px;overflow:hidden;margin:15px"><div style="width:${total}%;height:100%;background:linear-gradient(90deg,#00d4ff,#7b2ff7);transition:width .3s"></div></div>`;
+    const btns=el('div','');btns.style.cssText='display:flex;flex-wrap:wrap;gap:8px;justify-content:center';
+    for(let i=1;i<=10;i++){
+      const b=el('button','action-btn',`+${i}`);b.style.padding='8px 16px';
+      b.onclick=()=>{total+=i;if(total>=100){updateScore(curPlayer,1);winScreen(`${PN[curPlayer]} reached 100!`)}else{nextPlayer();render()}};
+      btns.appendChild(b);
+    }
+    board.appendChild(btns);
+  }
+  render();
+}
+
+// 18. Coin Flip War
+function initCoinFlip(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let round=0,maxR=8;
+  ga.appendChild(el('h2','','Coin Flip War'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Round ${round}/${maxR} — Call it!`);
+    board.innerHTML='';
+    const hb=el('button','action-btn','Heads 🪙');const tb=el('button','action-btn','Tails 🪙');
+    function flip(call){
+      const result=rand(0,1)?'Heads':'Tails';
+      const won=call===result;
+      if(won)updateScore(curPlayer,scores[curPlayer]+1);
+      board.innerHTML=`<p style="font-size:3rem;margin:20px">${result==='Heads'?'🪙':'💰'}</p><p style="font-size:1.3rem;color:${won?'#4cff91':'#ff6b6b'}">${result}! ${won?'✅ Correct!':'❌ Wrong!'}</p>`;
+      nextPlayer();const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    }
+    hb.onclick=()=>flip('Heads');tb.onclick=()=>flip('Tails');
+    board.appendChild(hb);board.appendChild(tb);
+  }
+  doRound();
+}
+
+// 19. Lucky Sevens
+function initLucky7(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let round=0,maxR=8;
+  ga.appendChild(el('h2','','Lucky Sevens'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Roll for 7!`);
+    board.innerHTML='';
+    const b=el('button','action-btn','🎲🎲 Roll Two Dice!');
+    b.onclick=()=>{
+      const d1=rand(1,6),d2=rand(1,6),sum=d1+d2;
+      const pts=sum===7?3:sum===11?2:sum%2===0?1:0;
+      updateScore(curPlayer,scores[curPlayer]+pts);
+      board.innerHTML=`<p style="font-size:2.5rem;margin:20px">🎲${d1} + 🎲${d2} = ${sum}</p><p style="font-size:1.2rem;color:${pts>0?'#4cff91':'#ff6b6b'}">+${pts} points ${sum===7?'🎉 LUCKY SEVEN!':sum===11?'🌟 ELEVEN!':''}</p>`;
+      nextPlayer();const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    };
+    board.appendChild(b);
+  }
+  doRound();
+}
+
+// 20. Snake Eyes
+function initSnakeEyes(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  ga.appendChild(el('h2','','Snake Eyes'));
+  ga.appendChild(el('div','turn-info',''));
+  ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  let turnTotal=0;
+  function render(){
+    board.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Turn total: ${turnTotal}`);
+    const rb=el('button','action-btn','🎲🎲 Roll');
+    const hb=el('button','action-btn secondary','✋ Hold');
+    rb.onclick=()=>{
+      const d1=rand(1,6),d2=rand(1,6);
+      if(d1===1&&d2===1){turnTotal=0;updateScore(curPlayer,0);board.innerHTML=`<p style="color:#ff6b6b;font-size:1.5rem">🐍 Snake Eyes! Lost ALL points!</p>`;nextPlayer();setTimeout(render,1500)}
+      else if(d1===1||d2===1){turnTotal=0;board.innerHTML=`<p style="color:#ff8800;font-size:1.3rem">🎲${d1}+🎲${d2} — Rolled a 1! Lost turn total!</p>`;nextPlayer();setTimeout(render,1500)}
+      else{turnTotal+=d1+d2;board.innerHTML=`<p style="font-size:1.3rem">🎲${d1}+🎲${d2} = ${d1+d2} — Turn total: ${turnTotal}</p>`;
+        const rb2=el('button','action-btn','🎲🎲 Roll Again');const hb2=el('button','action-btn secondary','✋ Hold');
+        rb2.onclick=rb.onclick;hb2.onclick=hb.onclick;board.appendChild(rb2);board.appendChild(hb2);}
+    };
+    hb.onclick=()=>{updateScore(curPlayer,scores[curPlayer]+turnTotal);turnTotal=0;if(scores[curPlayer]>=100){winScreen(`${PN[curPlayer]} wins!`);return}nextPlayer();render()};
+    board.appendChild(rb);board.appendChild(hb);
+  }
+  render();
+}
+
+// 21. Greedy Dice
+function initGreedyDice(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let turnPts=0;
+  ga.appendChild(el('h2','','Greedy Dice'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    board.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]} — Turn points: ${turnPts}`);
+    const rb=el('button','action-btn','🎲 Roll (x3)');const hb=el('button','action-btn secondary','✋ Bank');
+    rb.onclick=()=>{
+      const dice=[rand(1,6),rand(1,6),rand(1,6)];const sum=dice.reduce((a,b)=>a+b);
+      if(dice.includes(1)){turnPts=0;board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">🎲${dice.join(' ')} — Got a 1! Bust!</p>`;nextPlayer();setTimeout(render,1500)}
+      else{turnPts+=sum;board.innerHTML=`<p style="font-size:1.3rem">🎲${dice.join(' ')} = +${sum} — Turn: ${turnPts}</p>`;
+        const rb2=el('button','action-btn','🎲 Roll Again');const hb2=el('button','action-btn secondary','✋ Bank');
+        rb2.onclick=rb.onclick;hb2.onclick=hb.onclick;board.appendChild(rb2);board.appendChild(hb2)}
+    };
+    hb.onclick=()=>{updateScore(curPlayer,scores[curPlayer]+turnPts);turnPts=0;if(scores[curPlayer]>=100){winScreen(`${PN[curPlayer]} wins!`);return}nextPlayer();render()};
+    board.appendChild(rb);board.appendChild(hb);
+  }
+  render();
+}
+
+// 22. Card War
+function initCardWar(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);let round=0,maxR=8;
+  ga.appendChild(el('h2','','Card War'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const faces=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;turnInfo(`Round ${round}/${maxR}`);board.innerHTML='';
+    const b=el('button','action-btn','🃏 Draw Cards!');
+    b.onclick=()=>{
+      const vals=Array.from({length:selPlayers},()=>rand(1,13));const mx=Math.max(...vals);
+      let html='<div style="display:flex;gap:15px;flex-wrap:wrap;justify-content:center;margin:20px">';
+      vals.forEach((v,i)=>{html+=`<div style="padding:15px 20px;background:${v===mx?'rgba(255,255,255,.15)':'rgba(255,255,255,.05)'};border-radius:12px;border:2px solid ${v===mx?PC[i]:'#333'};text-align:center"><div style="color:${PC[i]};font-weight:700">${PN[i]}</div><div style="font-size:2rem;margin:5px">${faces[v-1]}</div>${v===mx?'⭐':''}</div>`});
+      html+='</div>';
+      vals.forEach((v,i)=>{if(v===mx)updateScore(i,scores[i]+1)});
+      board.innerHTML=html;const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    };
+    board.appendChild(b);
+  }
+  doRound();
+}
+
+// 23. Blackjack
+function initBlackjack(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  ga.appendChild(el('h2','','Blackjack'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  let hands,done;
+  function deal(){hands=Array.from({length:selPlayers},()=>[rand(1,10),rand(1,10)]);done=Array(selPlayers).fill(false);curPlayer=0;doTurn()}
+  function handVal(h){return h.reduce((a,b)=>a+b,0)}
+  function doTurn(){
+    if(done.every(x=>x)){resolve();return}
+    if(done[curPlayer]){curPlayer=(curPlayer+1)%selPlayers;doTurn();return}
+    highlightPlayer();const v=handVal(hands[curPlayer]);
+    turnInfo(`${PN[curPlayer]}'s turn — Hand: ${hands[curPlayer].join('+')} = ${v}`);
+    board.innerHTML=`<p style="font-size:2rem;margin:20px">🃏 ${hands[curPlayer].join(' + ')} = ${v}</p>`;
+    if(v>=21){done[curPlayer]=true;if(v>21)board.innerHTML+=`<p style="color:#ff6b6b">Bust!</p>`;curPlayer=(curPlayer+1)%selPlayers;setTimeout(doTurn,1000);return}
+    const hb=el('button','action-btn','🃏 Hit');const sb=el('button','action-btn secondary','✋ Stand');
+    hb.onclick=()=>{hands[curPlayer].push(rand(1,10));doTurn()};
+    sb.onclick=()=>{done[curPlayer]=true;curPlayer=(curPlayer+1)%selPlayers;doTurn()};
+    board.appendChild(hb);board.appendChild(sb);
+  }
+  function resolve(){
+    let best=-1,wi=-1;
+    hands.forEach((h,i)=>{const v=handVal(h);if(v<=21&&v>best){best=v;wi=i}});
+    if(wi>=0)updateScore(wi,scores[wi]+1);
+    let html='<div style="display:flex;gap:15px;flex-wrap:wrap;justify-content:center;margin:20px">';
+    hands.forEach((h,i)=>{const v=handVal(h);html+=`<div style="padding:15px;background:rgba(255,255,255,.08);border-radius:12px;border:2px solid ${i===wi?PC[i]:'#333'};text-align:center"><div style="color:${PC[i]};font-weight:700">${PN[i]}</div><div style="font-size:1.5rem">${v}${v>21?' 💥':''}</div>${i===wi?'👑':''}</div>`});
+    html+='</div>';
+    board.innerHTML=html;
+    const nb=el('button','action-btn','Deal Again');nb.onclick=deal;board.appendChild(nb);
+    const hb=el('button','action-btn secondary','End Game');hb.onclick=()=>winScreen(getWinner()+' wins!');board.appendChild(hb);
+  }
+  deal();
+}
+
+// 24. Horse Race
+function initHorseRace(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);
+  const FINISH=20;let pos=Array(selPlayers).fill(0);
+  ga.appendChild(el('h2','','Horse Race'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  curPlayer=0;
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn to roll!`);
+    board.innerHTML='';
+    for(let i=0;i<selPlayers;i++){
+      const row=el('div','',`<span style="color:${PC[i]};width:70px;display:inline-block">${PN[i]}</span>${'░'.repeat(pos[i])}🏇${'─'.repeat(FINISH-pos[i])}🏁`);
+      row.style.cssText='font-family:monospace;font-size:1.1rem;margin:5px 0';
+      board.appendChild(row);
+    }
+    const b=el('button','action-btn','🎲 Roll!');
+    b.onclick=()=>{const r=rand(1,6);pos[curPlayer]+=r;
+      if(pos[curPlayer]>=FINISH){updateScore(curPlayer,1);render();winScreen(`🏇 ${PN[curPlayer]} finishes first!`);return}
+      nextPlayer();render()};
+    board.appendChild(b);
+  }
+  render();
+}
+
+// 25. Beetle Drive
+function initBeetleDrive(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const parts=['Body','Head','Leg1','Leg2','Leg3','Eye'];
+  let playerParts=Array.from({length:selPlayers},()=>Array(6).fill(false));
+  ga.appendChild(el('h2','','Beetle Drive'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Roll for beetle parts!`);
+    board.innerHTML='';
+    for(let i=0;i<selPlayers;i++){
+      const pp=playerParts[i];
+      board.appendChild(el('div','',`<span style="color:${PC[i]};font-weight:700">${PN[i]}:</span> ${pp.map((v,j)=>v?'✅':'⬜').join('')} (${pp.filter(x=>x).length}/6)`));
+    }
+    const b=el('button','action-btn','🎲 Roll');
+    b.onclick=()=>{
+      const r=rand(1,6);const idx=r-1;
+      let msg;
+      if(idx===1&&!playerParts[curPlayer][0]){msg=`Rolled ${r} (${parts[idx]}) — Need Body first!`}
+      else if(idx===5&&!playerParts[curPlayer][1]){msg=`Rolled ${r} (${parts[idx]}) — Need Head first!`}
+      else if(playerParts[curPlayer][idx]){msg=`Rolled ${r} (${parts[idx]}) — Already have it!`}
+      else{playerParts[curPlayer][idx]=true;updateScore(curPlayer,scores[curPlayer]+1);msg=`Rolled ${r} — Got ${parts[idx]}!`}
+      if(playerParts[curPlayer].every(x=>x)){winScreen(`🪲 ${PN[curPlayer]} completed their beetle!`);return}
+      board.innerHTML+=`<p style="margin:10px;font-size:1.1rem">${msg}</p>`;
+      nextPlayer();setTimeout(render,1200);
+    };
+    board.appendChild(b);
+  }
+  render();
+}
+
+// 26. Target Number
+function initTargetNumber(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let round=0,maxR=6;
+  ga.appendChild(el('h2','','Target Number'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;const target=rand(20,50);const nums=[rand(1,9),rand(1,9),rand(1,9),rand(1,9)];
+    highlightPlayer();turnInfo(`${PN[curPlayer]} — Make ${target} using these numbers!`);
+    board.innerHTML=`<p style="font-size:1.5rem;margin:15px">🎯 Target: <b>${target}</b></p><p style="font-size:1.3rem">Numbers: ${nums.join(', ')}</p>`;
+    const inp=el('input','','');inp.type='number';inp.placeholder='Your answer';
+    inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:150px;text-align:center';
+    const b=el('button','action-btn','Submit');
+    b.onclick=()=>{
+      const v=parseInt(inp.value);const diff=Math.abs(v-target);
+      const pts=diff===0?3:diff<=2?2:diff<=5?1:0;
+      updateScore(curPlayer,scores[curPlayer]+pts);
+      board.innerHTML=`<p style="font-size:1.2rem">${PN[curPlayer]} guessed ${v} (target ${target}) — ${diff===0?'Perfect! +3':diff<=2?'Close! +2':diff<=5?'OK +1':'Too far +0'} pts</p>`;
+      nextPlayer();const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center;margin-top:15px';
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  doRound();
+}
+
+// 27. Multiplication Race
+function initMultRace(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let qi=0,maxQ=10;
+  ga.appendChild(el('h2','','Multiplication Race'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=maxQ){winScreen(getWinner()+' wins!');return}
+    qi++;const a=rand(2,12),b=rand(2,12),ans=a*b;
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Q${qi}/${maxQ}`);
+    board.innerHTML=`<p style="font-size:2.5rem;margin:20px">${a} × ${b} = ?</p>`;
+    const inp=el('input','','');inp.type='number';inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:120px;text-align:center';
+    const bt=el('button','action-btn','Submit');
+    bt.onclick=()=>{
+      if(parseInt(inp.value)===ans){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct!</p>`}
+      else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ Answer: ${ans}</p>`}
+      nextPlayer();setTimeout(showQ,1200);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')bt.click()});
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center';
+    row.appendChild(inp);row.appendChild(bt);board.appendChild(row);inp.focus();
+  }
+  showQ();
+}
+
+// 28. Typing Speed
+function initTypingSpeed(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const words=['adventure','butterfly','chocolate','dinosaur','elephant','fireworks','giraffe','hamburger','incredible','jellyfish'];
+  ga.appendChild(el('h2','','Typing Speed'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doTurn(){
+    if(curPlayer>=selPlayers){
+      let best=Math.min(...scores.filter(s=>s>0));let wi=scores.indexOf(best);
+      winScreen(`${PN[wi]} wins with ${best}ms!`);return;
+    }
+    highlightPlayer();const word=words[rand(0,words.length-1)];
+    turnInfo(`${PN[curPlayer]} — Type this word as fast as you can!`);
+    board.innerHTML=`<p style="font-size:2.5rem;margin:20px;letter-spacing:4px;font-family:monospace">${word}</p>`;
+    const inp=el('input','','');inp.type='text';inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:250px;text-align:center';
+    const start=Date.now();
+    inp.addEventListener('input',()=>{
+      if(inp.value.toLowerCase()===word){
+        const ms=Date.now()-start;updateScore(curPlayer,ms);
+        board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">${PN[curPlayer]}: ${ms}ms!</p>`;
+        curPlayer++;setTimeout(doTurn,1500);
+      }
+    });
+    board.appendChild(inp);inp.focus();
+  }
+  doTurn();
+}
+
+// 29. Emoji Match (reuses Memory engine with emojis)
+function initEmojiMatch(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const emojis=['😀','😎','🤩','😱','🤖','👻','🎃','🦄','🐱','🐶','🌈','⭐','🔥','💎','🎸','🚀'];
+  const n=8;const cards=shuffle([...emojis.slice(0,n),...emojis.slice(0,n)]);
+  let revealed=Array(cards.length).fill(false),flipped=[],busy=false;
+  ga.appendChild(el('h2','','Emoji Match'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const grid=el('div','');grid.style.cssText='display:grid;grid-template-columns:repeat(4,75px);gap:8px';board.appendChild(grid);
+  function render(){
+    grid.innerHTML='';highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn`);
+    cards.forEach((s,i)=>{
+      const c=el('div','',revealed[i]?s:'❓');
+      c.style.cssText=`width:75px;height:75px;display:flex;align-items:center;justify-content:center;font-size:${revealed[i]?'2.2rem':'1.8rem'};background:${revealed[i]?'rgba(255,255,255,.15)':'rgba(255,255,255,.06)'};border-radius:12px;cursor:pointer`;
+      if(!revealed[i]&&!busy)c.onclick=()=>{
+        if(flipped.length>=2||flipped.includes(i))return;
+        revealed[i]=true;flipped.push(i);render();
+        if(flipped.length===2){busy=true;setTimeout(()=>{
+          if(cards[flipped[0]]===cards[flipped[1]]){updateScore(curPlayer,scores[curPlayer]+1)}
+          else{revealed[flipped[0]]=false;revealed[flipped[1]]=false;nextPlayer()}
+          flipped=[];busy=false;if(revealed.every(x=>x)){winScreen(getWinner()+' wins!')}else render()},800)}
+      };
+      grid.appendChild(c);
+    });
+  }
+  render();
+}
+
+// 30. Pattern Match
+function initPatternMatch(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const shapes=['🔴','🟢','🔵','🟡','🟣','🟠'];let seq=[],round=0;
+  ga.appendChild(el('h2','','Pattern Match'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    round++;seq.push(shapes[rand(0,shapes.length-1)]);
+    highlightPlayer();turnInfo(`Watch the pattern! (${seq.length} items)`);
+    board.innerHTML='';
+    let i=0;const iv=setInterval(()=>{
+      board.innerHTML=`<p style="font-size:4rem">${seq[i]}</p>`;
+      i++;if(i>=seq.length){clearInterval(iv);setTimeout(askRepeat,800)}
+    },700);
+  }
+  function askRepeat(){
+    turnInfo(`${PN[curPlayer]}: Repeat the pattern!`);
+    board.innerHTML='';let userSeq=[];
+    const btns=el('div','');btns.style.cssText='display:flex;gap:10px;flex-wrap:wrap;justify-content:center';
+    shapes.forEach(s=>{
+      const b=el('button','',s);b.style.cssText='font-size:2rem;width:55px;height:55px;border-radius:12px;border:1px solid #444;background:rgba(255,255,255,.08);cursor:pointer';
+      b.onclick=()=>{
+        userSeq.push(s);
+        if(userSeq[userSeq.length-1]!==seq[userSeq.length-1]){
+          updateScore(curPlayer,round-1);board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ Wrong at step ${userSeq.length}! Score: ${round-1}</p>`;
+          nextPlayer();seq=[];round=0;setTimeout(doRound,1500);return;
+        }
+        if(userSeq.length===seq.length){
+          updateScore(curPlayer,round);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct! (${round} in a row)</p>`;
+          if(round>=6){winScreen(getWinner()+' wins!');return}
+          nextPlayer();setTimeout(doRound,1200);
+        }
+      };
+      btns.appendChild(b);
+    });
+    board.appendChild(btns);
+  }
+  doRound();
+}
+
+// 31. Countdown
+function initCountdown(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let count=21;
+  ga.appendChild(el('h2','','Countdown from 21'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Count: ${count}`);
+    board.innerHTML=`<p style="font-size:3rem;margin:20px">${count}</p>`;
+    const btns=el('div','');btns.style.cssText='display:flex;gap:10px;justify-content:center';
+    [1,2,3].forEach(n=>{
+      if(n<=count){const b=el('button','action-btn',`-${n}`);
+        b.onclick=()=>{count-=n;if(count<=0){turnInfo(`${PN[curPlayer]} said 0 and loses!`);
+          for(let i=0;i<selPlayers;i++)if(i!==curPlayer)updateScore(i,scores[i]+1);
+          winScreen(getWinner()+' wins!');return}nextPlayer();render()};
+        btns.appendChild(b)}
+    });
+    board.appendChild(btns);
+  }
+  render();
+}
+
+// 32. Word Builder
+function initWordBuilder(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let round=0,maxR=5;
+  const vowels='AEIOU',cons='BCDFGHJKLMNPQRSTVWXYZ';
+  ga.appendChild(el('h2','','Word Builder'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;
+    const letters=[];for(let i=0;i<3;i++)letters.push(vowels[rand(0,4)]);for(let i=0;i<4;i++)letters.push(cons[rand(0,cons.length-1)]);
+    shuffle(letters);
+    turnInfo(`Round ${round}/${maxR} — All players make a word!`);
+    board.innerHTML=`<p style="font-size:2rem;letter-spacing:8px;margin:20px">${letters.join(' ')}</p>`;
+    let inputs=[];
+    for(let i=0;i<selPlayers;i++){
+      const row=el('div','');row.style.cssText='display:flex;gap:8px;align-items:center;justify-content:center;margin:5px';
+      row.appendChild(el('span','',`<span style="color:${PC[i]};font-weight:700">${PN[i]}:</span>`));
+      const inp=el('input','','');inp.type='text';inp.style.cssText='padding:8px;font-size:1rem;border-radius:8px;border:1px solid #444;background:#111;color:#fff;width:150px';
+      inputs.push(inp);row.appendChild(inp);board.appendChild(row);
+    }
+    const b=el('button','action-btn','Submit All');
+    b.onclick=()=>{
+      inputs.forEach((inp,i)=>{
+        const w=inp.value.toUpperCase();const valid=w.length>0&&w.split('').every(c=>letters.includes(c));
+        const pts=valid?w.length:0;updateScore(i,scores[i]+pts);
+      });
+      const nb=el('button','action-btn','Next Round →');nb.onclick=doRound;board.innerHTML='';board.appendChild(nb);
+    };
+    board.appendChild(b);
+  }
+  doRound();
+}
+
+// 33-40: Quiz games using shared engine
+function initScienceQuiz(){initQuizGame('Science Quiz',[
+  {q:'What gas do plants absorb?',o:['Oxygen','Nitrogen','CO2','Helium'],a:2},
+  {q:'What is the powerhouse of the cell?',o:['Nucleus','Ribosome','Mitochondria','Membrane'],a:2},
+  {q:'What planet is closest to the Sun?',o:['Venus','Mercury','Mars','Earth'],a:1},
+  {q:'What is H2O?',o:['Hydrogen','Oxygen','Water','Salt'],a:2},
+  {q:'How many teeth does an adult have?',o:['28','30','32','36'],a:2},
+  {q:'What force keeps us on Earth?',o:['Magnetism','Gravity','Friction','Inertia'],a:1},
+  {q:'What is the largest organ?',o:['Heart','Liver','Skin','Brain'],a:2},
+  {q:'Speed of light is approx?',o:['300k km/s','150k km/s','500k km/s','100k km/s'],a:0},
+  {q:'What element is symbol "Fe"?',o:['Lead','Gold','Iron','Silver'],a:2},
+  {q:'DNA stands for?',o:['Deoxyribonucleic acid','Dinucleic acid','Dual nucleic acid','None'],a:0}
+])}
+function initHistoryQuiz(){initQuizGame('History Quiz',[
+  {q:'Who was the first US president?',o:['Lincoln','Washington','Jefferson','Adams'],a:1},
+  {q:'When did WW1 start?',o:['1912','1914','1916','1918'],a:1},
+  {q:'Who built the pyramids?',o:['Romans','Greeks','Egyptians','Persians'],a:2},
+  {q:'When did the Titanic sink?',o:['1910','1911','1912','1913'],a:2},
+  {q:'Who discovered America?',o:['Columbus','Magellan','Cook','Drake'],a:0},
+  {q:'French Revolution started in?',o:['1776','1789','1799','1812'],a:1},
+  {q:'Who was Cleopatra?',o:['Greek queen','Egyptian queen','Roman queen','Persian queen'],a:1},
+  {q:'Berlin Wall fell in?',o:['1987','1988','1989','1990'],a:2},
+  {q:'Who invented printing press?',o:['Edison','Gutenberg','Tesla','Newton'],a:1},
+  {q:'Moon landing year?',o:['1967','1968','1969','1970'],a:2}
+])}
+function initGeoQuiz(){initQuizGame('Geography Quiz',[
+  {q:'What is the largest continent?',o:['Africa','Europe','Asia','Americas'],a:2},
+  {q:'Capital of Japan?',o:['Beijing','Seoul','Tokyo','Bangkok'],a:2},
+  {q:'Longest river in the world?',o:['Amazon','Nile','Mississippi','Yangtze'],a:1},
+  {q:'Which country has most people?',o:['India','USA','China','Indonesia'],a:0},
+  {q:'Sahara Desert is in?',o:['Asia','Africa','Australia','Americas'],a:1},
+  {q:'Capital of Australia?',o:['Sydney','Melbourne','Canberra','Perth'],a:2},
+  {q:'Tallest mountain?',o:['K2','Kangchenjunga','Everest','Lhotse'],a:2},
+  {q:'Which ocean is smallest?',o:['Indian','Atlantic','Arctic','Pacific'],a:2},
+  {q:'Capital of Brazil?',o:['Rio','São Paulo','Brasília','Salvador'],a:2},
+  {q:'Great Wall is in?',o:['Japan','Korea','China','India'],a:2}
+])}
+function initMovieQuiz(){initQuizGame('Movie Quiz',[
+  {q:'Who directed Jurassic Park?',o:['Spielberg','Lucas','Cameron','Nolan'],a:0},
+  {q:'What year was The Lion King (original)?',o:['1992','1994','1996','1998'],a:1},
+  {q:'"I see dead people" is from?',o:['It','The Sixth Sense','Ghost','Psycho'],a:1},
+  {q:'Who played Jack in Titanic?',o:['Pitt','Depp','DiCaprio','Clooney'],a:2},
+  {q:'Toy Story studio?',o:['Disney','Pixar','DreamWorks','Sony'],a:1},
+  {q:'Harry Potter school name?',o:['Hogwarts','Narnia','Mordor','Rivendell'],a:0},
+  {q:'Who is Iron Man?',o:['Steve Rogers','Tony Stark','Bruce Wayne','Peter Parker'],a:1},
+  {q:'"May the Force" is from?',o:['Star Trek','Star Wars','Dune','Alien'],a:1},
+  {q:'Finding Nemo fish type?',o:['Goldfish','Clownfish','Blowfish','Swordfish'],a:1},
+  {q:'Frozen song?',o:['Let It Be','Let It Go','Let It Snow','Let It Shine'],a:1}
+])}
+function initSportsQuiz(){initQuizGame('Sports Quiz',[
+  {q:'How many players in a soccer team?',o:['9','10','11','12'],a:2},
+  {q:'Olympics happen every?',o:['2 years','3 years','4 years','5 years'],a:2},
+  {q:'NBA sport?',o:['Baseball','Basketball','Football','Hockey'],a:1},
+  {q:'Tennis Grand Slams per year?',o:['2','3','4','5'],a:2},
+  {q:'FIFA World Cup sport?',o:['Cricket','Rugby','Soccer','Baseball'],a:2},
+  {q:'Who is Usain Bolt?',o:['Swimmer','Sprinter','Boxer','Cyclist'],a:1},
+  {q:'Super Bowl sport?',o:['Baseball','Soccer','Basketball','Football'],a:3},
+  {q:'How many holes in golf?',o:['9','14','18','21'],a:2},
+  {q:'Cricket originated in?',o:['India','Australia','England','SA'],a:2},
+  {q:'Marathon distance (approx)?',o:['26 miles','30 miles','20 miles','35 miles'],a:0}
+])}
+function initAnimalQuiz(){initQuizGame('Animal Quiz',[
+  {q:'Largest animal ever?',o:['Elephant','Blue Whale','T-Rex','Giraffe'],a:1},
+  {q:'How many legs does a spider have?',o:['6','8','10','12'],a:1},
+  {q:'What animal is the fastest?',o:['Cheetah','Eagle','Sailfish','Horse'],a:0},
+  {q:'Pandas mainly eat?',o:['Fish','Bamboo','Insects','Berries'],a:1},
+  {q:'What group do dolphins belong to?',o:['Fish','Reptiles','Mammals','Birds'],a:2},
+  {q:'How many hearts does an octopus have?',o:['1','2','3','4'],a:2},
+  {q:'National animal of Australia?',o:['Koala','Kangaroo','Platypus','Emu'],a:1},
+  {q:'Largest bird?',o:['Eagle','Ostrich','Condor','Albatross'],a:1},
+  {q:'Chameleons are known for?',o:['Speed','Color change','Venom','Flying'],a:1},
+  {q:'Bees communicate by?',o:['Singing','Dancing','Light','Smell'],a:1}
+])}
+function initFoodQuiz(){initQuizGame('Food Quiz',[
+  {q:'Sushi originates from?',o:['China','Korea','Japan','Thailand'],a:2},
+  {q:'What is tofu made from?',o:['Rice','Soybeans','Wheat','Corn'],a:1},
+  {q:'Pizza originated in?',o:['USA','France','Italy','Greece'],a:2},
+  {q:'Vitamin C is found in?',o:['Bread','Oranges','Meat','Rice'],a:1},
+  {q:'What grain is bread made from?',o:['Rice','Corn','Wheat','Oats'],a:2},
+  {q:'Croissant is from?',o:['Italy','France','Spain','Austria'],a:1},
+  {q:'What is guacamole made from?',o:['Tomato','Avocado','Pepper','Onion'],a:1},
+  {q:'Chocolate comes from?',o:['Cacao beans','Coffee beans','Vanilla','Coconut'],a:0},
+  {q:'Kimchi is from?',o:['Japan','China','Korea','Vietnam'],a:2},
+  {q:'Most eaten food worldwide?',o:['Bread','Rice','Pasta','Potatoes'],a:1}
+])}
+function initMusicQuiz(){initQuizGame('Music Quiz',[
+  {q:'Who sang "Thriller"?',o:['Prince','Jackson','Mercury','Bowie'],a:1},
+  {q:'How many strings on a guitar?',o:['4','5','6','7'],a:2},
+  {q:'Beatles are from?',o:['USA','Liverpool','London','Dublin'],a:1},
+  {q:'"Bohemian Rhapsody" band?',o:['Queen','Beatles','Kiss','Who'],a:0},
+  {q:'Piano has how many keys?',o:['76','84','88','92'],a:2},
+  {q:'Elvis is the King of?',o:['Pop','Jazz','Rock and Roll','Blues'],a:2},
+  {q:'Violin family member?',o:['Flute','Cello','Trumpet','Drum'],a:1},
+  {q:'"Imagine" is by?',o:['McCartney','Lennon','Jagger','Dylan'],a:1},
+  {q:'Tempo measured in?',o:['Hz','BPM','Watts','Decibels'],a:1},
+  {q:'National anthem genre?',o:['Pop','Classical','March','Jazz'],a:2}
+])}
+
+// 41. Dice Poker
+function initDicePoker(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);let round=0,maxR=5;
+  ga.appendChild(el('h2','','Dice Poker'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function scoreHand(dice){
+    const counts={};dice.forEach(d=>counts[d]=(counts[d]||0)+1);const vals=Object.values(counts).sort((a,b)=>b-a);
+    if(vals[0]===5)return{s:50,n:'Five of a Kind!'};if(vals[0]===4)return{s:40,n:'Four of a Kind'};
+    if(vals[0]===3&&vals[1]===2)return{s:35,n:'Full House'};const sorted=[...dice].sort();
+    if(sorted.join('')==='12345'||sorted.join('')==='23456')return{s:30,n:'Straight'};
+    if(vals[0]===3)return{s:25,n:'Three of a Kind'};if(vals[0]===2&&vals[1]===2)return{s:20,n:'Two Pairs'};
+    if(vals[0]===2)return{s:10,n:'One Pair'};return{s:dice.reduce((a,b)=>a+b),n:'High Card'};
+  }
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;turnInfo(`Round ${round}/${maxR}`);board.innerHTML='';
+    const b=el('button','action-btn','🎲 Roll All Hands!');
+    b.onclick=()=>{
+      let html='';let best=-1,wi=-1;
+      for(let i=0;i<selPlayers;i++){
+        const dice=Array.from({length:5},()=>rand(1,6));const h=scoreHand(dice);
+        if(h.s>best){best=h.s;wi=i}
+        html+=`<div style="margin:8px;padding:10px;background:rgba(255,255,255,.06);border-radius:12px;border:2px solid ${PC[i]}"><span style="color:${PC[i]};font-weight:700">${PN[i]}</span>: 🎲${dice.join(' ')} — ${h.n} (${h.s}pts)</div>`;
+      }
+      updateScore(wi,scores[wi]+1);
+      board.innerHTML=html+`<p style="color:#4cff91;margin:10px">${PN[wi]} wins the round!</p>`;
+      const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.appendChild(nb);
+    };
+    board.appendChild(b);
+  }
+  doRound();
+}
+
+// 42. Bulls & Cows
+function initBullsCows(){
+  const ga=$('gameArea');ga.innerHTML='';scores=[0,0];curPlayer=0;
+  const digits='0123456789'.split('');const secret=shuffle([...digits]).slice(0,4).join('');
+  let attempts=0;
+  ga.appendChild(el('h2','','Bulls & Cows'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  const hist=el('div','');hist.style.cssText='max-height:200px;overflow-y:auto;margin:10px 0';
+  board.appendChild(hist);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]} — Guess the 4-digit code!`);
+    const existing=board.querySelector('.guess-row');if(existing)existing.remove();
+    const row=el('div','guess-row');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center;margin-top:10px';
+    const inp=el('input','','');inp.type='text';inp.maxLength=4;inp.placeholder='4 digits';
+    inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:120px;text-align:center;letter-spacing:6px';
+    const b=el('button','action-btn','Guess');
+    b.onclick=()=>{
+      const g=inp.value;if(g.length!==4||!/^\d{4}$/.test(g))return;
+      attempts++;let bulls=0,cows=0;
+      for(let i=0;i<4;i++){if(g[i]===secret[i])bulls++;else if(secret.includes(g[i]))cows++}
+      hist.innerHTML+=`<div style="margin:3px;font-size:.95rem"><span style="color:${PC[curPlayer]}">${PN[curPlayer]}</span>: ${g} → 🐂${bulls} 🐄${cows}</div>`;
+      if(bulls===4){updateScore(curPlayer,1);winScreen(`${PN[curPlayer]} cracked ${secret} in ${attempts} guesses!`);return}
+      nextPlayer();render();
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  render();
+}
+
+// 43. Dots & Boxes
+function initDotsBoxes(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const R=3,C=3;
+  const hLines=Array.from({length:R+1},()=>Array(C).fill(-1));
+  const vLines=Array.from({length:R},()=>Array(C+1).fill(-1));
+  const boxes=Array.from({length:R},()=>Array(C).fill(-1));
+  ga.appendChild(el('h2','','Dots & Boxes'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function checkBoxes(){
+    let scored=false;
+    for(let r=0;r<R;r++)for(let c=0;c<C;c++){
+      if(boxes[r][c]<0&&hLines[r][c]>=0&&hLines[r+1][c]>=0&&vLines[r][c]>=0&&vLines[r][c+1]>=0){
+        boxes[r][c]=curPlayer;updateScore(curPlayer,scores[curPlayer]+1);scored=true;
+      }
+    }
+    return scored;
+  }
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn`);
+    board.innerHTML='';const tbl=el('div','');tbl.style.cssText='display:inline-block';
+    for(let r=0;r<=R;r++){
+      const hRow=el('div','');hRow.style.cssText='display:flex;align-items:center';
+      for(let c=0;c<C;c++){
+        hRow.appendChild(el('span','','●'));
+        const line=el('span','',hLines[r][c]>=0?'━━━':'···');
+        line.style.cssText=`cursor:${hLines[r][c]<0?'pointer':'default'};color:${hLines[r][c]>=0?PC[hLines[r][c]]:'#555'};font-size:1.2rem;margin:0 2px;font-family:monospace`;
+        if(hLines[r][c]<0){const rr=r,cc=c;line.onclick=()=>{hLines[rr][cc]=curPlayer;if(!checkBoxes())nextPlayer();render();if(boxes.every(row=>row.every(v=>v>=0)))winScreen(getWinner()+' wins!')}}
+        hRow.appendChild(line);
+      }
+      hRow.appendChild(el('span','','●'));tbl.appendChild(hRow);
+      if(r<R){
+        const vRow=el('div','');vRow.style.cssText='display:flex;align-items:center';
+        for(let c=0;c<=C;c++){
+          const line=el('span','',vLines[r][c]>=0?'┃':' ¦');
+          line.style.cssText=`cursor:${vLines[r][c]<0?'pointer':'default'};color:${vLines[r][c]>=0?PC[vLines[r][c]]:'#555'};font-size:1.2rem;width:20px;text-align:center;font-family:monospace`;
+          if(vLines[r][c]<0){const rr=r,cc=c;line.onclick=()=>{vLines[rr][cc]=curPlayer;if(!checkBoxes())nextPlayer();render();if(boxes.every(row=>row.every(v=>v>=0)))winScreen(getWinner()+' wins!')}}
+          vRow.appendChild(line);
+          if(c<C){const box=el('span','',boxes[r][c]>=0?PN[boxes[r][c]][0]:' ');box.style.cssText=`width:30px;text-align:center;color:${boxes[r][c]>=0?PC[boxes[r][c]]:'transparent'};font-weight:700`;vRow.appendChild(box)}
+        }
+        tbl.appendChild(vRow);
+      }
+    }
+    board.appendChild(tbl);
+  }
+  render();
+}
+
+// 44. Treasure Hunt
+function initTreasureHunt(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const S=5;const grid=Array.from({length:S},()=>Array(S).fill(0));
+  const treasures=rand(3,5);for(let i=0;i<treasures;i++){let r,c;do{r=rand(0,S-1);c=rand(0,S-1)}while(grid[r][c]);grid[r][c]=1}
+  let revealed=Array.from({length:S},()=>Array(S).fill(false));
+  ga.appendChild(el('h2','','Treasure Hunt'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Find the treasure! 💎`);
+    board.innerHTML='';const g=el('div','');g.style.cssText=`display:grid;grid-template-columns:repeat(${S},60px);gap:4px`;
+    for(let r=0;r<S;r++)for(let c=0;c<S;c++){
+      const cell=el('div','',revealed[r][c]?(grid[r][c]?'💎':'💨'):'❓');
+      cell.style.cssText=`width:60px;height:60px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;background:${revealed[r][c]?'rgba(255,255,255,.1)':'rgba(255,255,255,.05)'};border-radius:10px;cursor:${revealed[r][c]?'default':'pointer'}`;
+      if(!revealed[r][c]){const rr=r,cc=c;cell.onclick=()=>{
+        revealed[rr][cc]=true;
+        if(grid[rr][cc]){updateScore(curPlayer,scores[curPlayer]+1)}
+        else nextPlayer();
+        let allFound=true;for(let i=0;i<S;i++)for(let j=0;j<S;j++)if(grid[i][j]&&!revealed[i][j])allFound=false;
+        if(allFound){winScreen(getWinner()+' wins!')}else render();
+      }}
+      g.appendChild(cell);
+    }
+    board.appendChild(g);
+  }
+  render();
+}
+
+// 45. Sequence Memory
+function initSequenceMemory(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let seq=[],round=0;
+  ga.appendChild(el('h2','','Sequence Memory'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    round++;seq.push(rand(1,9));
+    highlightPlayer();turnInfo(`Watch! (${seq.length} numbers)`);
+    board.innerHTML=`<p style="font-size:3rem;margin:20px" id="seqDisp"></p>`;
+    let i=0;const iv=setInterval(()=>{$('seqDisp').textContent=seq[i];i++;
+      if(i>=seq.length){clearInterval(iv);setTimeout(()=>{$('seqDisp').textContent='';askRepeat()},600)}
+    },800);
+  }
+  function askRepeat(){
+    turnInfo(`${PN[curPlayer]}: Enter the sequence!`);
+    const inp=el('input','','');inp.type='text';inp.placeholder='e.g. 385';
+    inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:200px;text-align:center;letter-spacing:6px';
+    const b=el('button','action-btn','Submit');
+    b.onclick=()=>{
+      const ans=inp.value.split('').map(Number);
+      if(JSON.stringify(ans)===JSON.stringify(seq)){
+        updateScore(curPlayer,round);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct!</p>`;
+        if(round>=7){winScreen(getWinner()+' wins!');return}
+        nextPlayer();setTimeout(doRound,1200);
+      }else{
+        updateScore(curPlayer,round-1);board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ Wrong! It was ${seq.join('')}</p>`;
+        nextPlayer();seq=[];round=0;setTimeout(doRound,1500);
+      }
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    board.innerHTML='';const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center';
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  doRound();
+}
+
+// 46. Quick Draw
+function initQuickDraw(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  ga.appendChild(el('h2','','Quick Draw'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  let totalRounds=0;
+  function doTurn(){
+    if(totalRounds>=selPlayers*3){winScreen(getWinner()+' wins!');return}
+    totalRounds++;highlightPlayer();turnInfo(`${PN[curPlayer]} — Click targets! 10 seconds!`);
+    board.innerHTML='';let count=0;
+    const area=el('div','');area.style.cssText='width:350px;height:300px;background:rgba(255,255,255,.04);border-radius:16px;position:relative;overflow:hidden';
+    board.appendChild(area);
+    function spawnTarget(){
+      area.innerHTML='';
+      const t=el('div','','🎯');t.style.cssText=`position:absolute;top:${rand(10,250)}px;left:${rand(10,300)}px;font-size:2rem;cursor:pointer`;
+      t.onclick=()=>{count++;spawnTarget()};area.appendChild(t);
+    }
+    spawnTarget();
+    setTimeout(()=>{updateScore(curPlayer,scores[curPlayer]+count);board.innerHTML=`<p style="font-size:1.3rem">${PN[curPlayer]} hit ${count} targets!</p>`;
+      nextPlayer();const nb=el('button','action-btn','Next →');nb.onclick=doTurn;board.appendChild(nb)},10000);
+  }
+  doTurn();
+}
+
+// 47. Spelling Bee
+function initSpellingBee(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let qi=0,maxQ=8;
+  const words=[{w:'NECESSARY',h:'Needed'},{w:'SEPARATE',h:'Apart'},{w:'ACCOMMODATE',h:'Make room'},{w:'RHYTHM',h:'Musical beat'},{w:'DEFINITELY',h:'For sure'},{w:'OCCURRED',h:'Happened'},{w:'RESTAURANT',h:'Eat out'},{w:'ENVIRONMENT',h:'Nature'},{w:'CONSCIENCE',h:'Inner voice'},{w:'PRIVILEGE',h:'Special right'}];
+  const pool=shuffle([...words]);
+  ga.appendChild(el('h2','','Spelling Bee'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=maxQ){winScreen(getWinner()+' wins!');return}
+    const item=pool[qi%pool.length];qi++;
+    highlightPlayer();turnInfo(`${PN[curPlayer]} — Spell the word!`);
+    board.innerHTML=`<p style="font-size:1.3rem;margin:15px">Hint: "${item.h}" (${item.w.length} letters)</p>`;
+    const inp=el('input','','');inp.type='text';inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:250px;text-align:center';
+    const b=el('button','action-btn','Submit');
+    b.onclick=()=>{
+      if(inp.value.toUpperCase()===item.w){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct! ${item.w}</p>`}
+      else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ Correct spelling: ${item.w}</p>`}
+      nextPlayer();setTimeout(showQ,1500);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center';
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  showQ();
+}
+
+// 48. Hot Potato
+function initHotPotato(){
+  const ga=$('gameArea');ga.innerHTML='';let alive=Array.from({length:selPlayers},(_, i)=>i);
+  ga.appendChild(el('h2','','Hot Potato'));ga.appendChild(el('div','turn-info',''));
+  const board=el('div','game-board');ga.appendChild(board);
+  let holder=0;
+  function doRound(){
+    if(alive.length<=1){winScreen(`${PN[alive[0]]} wins!`);return}
+    const timer=rand(3000,8000);holder=0;
+    turnInfo(`Pass the potato! 🥔`);render();
+    setTimeout(()=>{
+      const out=alive[holder%alive.length];
+      board.innerHTML=`<p style="color:#ff6b6b;font-size:1.5rem">💥 ${PN[out]} is out!</p>`;
+      alive=alive.filter(x=>x!==out);
+      const nb=el('button','action-btn','Next Round →');nb.onclick=doRound;board.appendChild(nb);
+    },timer);
+  }
+  function render(){
+    board.innerHTML='';
+    const cur=alive[holder%alive.length];
+    board.appendChild(el('div','',`<p style="font-size:3rem;margin:20px">🥔</p><p style="font-size:1.3rem;color:${PC[cur]}">${PN[cur]} has the potato!</p>`));
+    const b=el('button','action-btn','👉 Pass!');
+    b.onclick=()=>{holder++;render()};
+    board.appendChild(b);
+    const players=el('div','');players.style.cssText='display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;justify-content:center';
+    alive.forEach((p,i)=>{
+      const d=el('div','',`${PN[p]} ${i===holder%alive.length?'🥔':''}`);
+      d.style.cssText=`padding:8px 14px;border-radius:12px;background:${PC[p]}33;border:2px solid ${PC[p]};font-weight:600`;
+      players.appendChild(d);
+    });
+    board.appendChild(players);
+  }
+  doRound();
+}
+
+// 49. Bingo
+function initBingo(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const S=5;let boards=Array.from({length:selPlayers},()=>{
+    const nums=shuffle(Array.from({length:25},(_, i)=>i+1));
+    return{nums,marked:Array(25).fill(false)};
+  });
+  let called=[],pool=shuffle(Array.from({length:50},(_, i)=>i+1));
+  ga.appendChild(el('h2','','Bingo'));ga.appendChild(el('div','turn-info',''));
+  const board=el('div','game-board');ga.appendChild(board);
+  function checkWin(b){
+    const m=b.marked;
+    for(let r=0;r<S;r++){if(m.slice(r*S,r*S+S).every(x=>x))return true}
+    for(let c=0;c<S;c++){let col=true;for(let r=0;r<S;r++)if(!m[r*S+c])col=false;if(col)return true}
+    let d1=true,d2=true;for(let i=0;i<S;i++){if(!m[i*S+i])d1=false;if(!m[i*S+(S-1-i)])d2=false}
+    return d1||d2;
+  }
+  function render(){
+    board.innerHTML='';turnInfo(`Called: ${called.length} numbers`);
+    const cb=el('button','action-btn','📢 Call Number!');
+    cb.onclick=()=>{
+      if(pool.length===0)return;
+      const num=pool.pop();called.push(num);
+      boards.forEach(b=>{const idx=b.nums.indexOf(num);if(idx>=0)b.marked[idx]=true});
+      for(let i=0;i<selPlayers;i++){if(checkWin(boards[i])){winScreen(`🎉 ${PN[i]} gets BINGO!`);return}}
+      render();
+    };
+    board.appendChild(cb);
+    board.appendChild(el('div','',`<p style="margin:10px;font-size:1.1rem">Last called: ${called.length?called[called.length-1]:'—'}</p>`));
+    for(let p=0;p<selPlayers;p++){
+      const pg=el('div','',`<div style="color:${PC[p]};font-weight:700;margin:10px 0 5px">${PN[p]}'s Board</div>`);
+      const g=el('div','');g.style.cssText=`display:grid;grid-template-columns:repeat(5,40px);gap:3px;margin-bottom:10px`;
+      boards[p].nums.forEach((n,i)=>{
+        const c=el('div','',n);c.style.cssText=`width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:.85rem;background:${boards[p].marked[i]?PC[p]+'66':'rgba(255,255,255,.06)'};border-radius:6px;font-weight:${boards[p].marked[i]?'700':'400'}`;
+        g.appendChild(c);
+      });
+      pg.appendChild(g);board.appendChild(pg);
+    }
+  }
+  render();
+}
+
+// 50. Reflex Battle
+function initReflex(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);let round=0,maxR=5;
+  const keys='QWERTASDFG'.split('');
+  ga.appendChild(el('h2','','Reflex Battle'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function doRound(){
+    if(round>=maxR){winScreen(getWinner()+' wins!');return}
+    round++;turnInfo(`Round ${round}/${maxR} — Get ready...`);
+    board.innerHTML=`<p style="font-size:1.5rem;margin:20px">Wait for it...</p>`;
+    const delay=rand(2000,5000);
+    setTimeout(()=>{
+      const target=keys[rand(0,keys.length-1)];
+      board.innerHTML=`<p style="font-size:3rem;margin:20px;color:#4cff91">Press: ${target}</p>`;
+      const start=Date.now();let won=false;
+      function handler(e){
+        if(won)return;
+        if(e.key.toUpperCase()===target){
+          won=true;document.removeEventListener('keydown',handler);
+          const ms=Date.now()-start;
+          board.innerHTML=`<p style="font-size:1.3rem">First press: ${ms}ms! But who pressed it?</p>`;
+          const btns=el('div','');btns.style.cssText='display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:15px';
+          for(let i=0;i<selPlayers;i++){
+            const b=el('button','action-btn',PN[i]);b.style.background=PC[i]+'cc';
+            b.onclick=()=>{updateScore(i,scores[i]+1);const nb=el('button','action-btn','Next →');nb.onclick=doRound;board.innerHTML=`<p style="color:${PC[i]};font-size:1.3rem">${PN[i]} gets the point!</p>`;board.appendChild(nb)};
+            btns.appendChild(b);
+          }
+          board.appendChild(btns);
+        }
+      }
+      document.addEventListener('keydown',handler);
+    },delay);
+  }
+  doRound();
+}
+
+// 51. Addition Race
+function initAdditionRace(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;let qi=0,maxQ=10;
+  ga.appendChild(el('h2','','Addition Race'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function showQ(){
+    if(qi>=maxQ){winScreen(getWinner()+' wins!');return}
+    qi++;const nums=[rand(10,99),rand(10,99),rand(10,99)];const ans=nums.reduce((a,b)=>a+b);
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn — Q${qi}/${maxQ}`);
+    board.innerHTML=`<p style="font-size:2rem;margin:20px">${nums.join(' + ')} = ?</p>`;
+    const inp=el('input','','');inp.type='number';inp.style.cssText='padding:10px;font-size:1.2rem;border-radius:12px;border:2px solid #444;background:#111;color:#fff;width:120px;text-align:center';
+    const b=el('button','action-btn','Submit');
+    b.onclick=()=>{
+      if(parseInt(inp.value)===ans){updateScore(curPlayer,scores[curPlayer]+1);board.innerHTML=`<p style="color:#4cff91;font-size:1.3rem">✅ Correct!</p>`}
+      else{board.innerHTML=`<p style="color:#ff6b6b;font-size:1.3rem">❌ Answer: ${ans}</p>`}
+      nextPlayer();setTimeout(showQ,1200);
+    };
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')b.click()});
+    const row=el('div','');row.style.cssText='display:flex;gap:10px;justify-content:center;align-items:center';
+    row.appendChild(inp);row.appendChild(b);board.appendChild(row);inp.focus();
+  }
+  showQ();
+}
+
+// 52. Ludo Race
+function initLudoRace(){
+  const ga=$('gameArea');ga.innerHTML='';scores=Array(selPlayers).fill(0);curPlayer=0;
+  const FINISH=30;let pos=Array(selPlayers).fill(0);
+  const specials={};for(let i=0;i<5;i++){specials[rand(3,27)]=rand(-3,5)}
+  ga.appendChild(el('h2','','Ludo Race'));ga.appendChild(el('div','turn-info',''));ga.appendChild(makeScoreboard());
+  const board=el('div','game-board');ga.appendChild(board);
+  function render(){
+    highlightPlayer();turnInfo(`${PN[curPlayer]}'s turn!`);
+    board.innerHTML='';
+    const track=el('div','');track.style.cssText='display:flex;flex-wrap:wrap;gap:3px;max-width:500px;justify-content:center;margin:15px';
+    for(let i=0;i<=FINISH;i++){
+      const sq=el('div','',i===FINISH?'🏁':(specials[i]?'⭐':''));
+      let occupants='';for(let p=0;p<selPlayers;p++)if(pos[p]===i)occupants+=`<span style="color:${PC[p]}">●</span>`;
+      sq.innerHTML+=occupants;
+      sq.style.cssText=`width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:.8rem;background:rgba(255,255,255,.06);border-radius:6px`;
+      track.appendChild(sq);
+    }
+    board.appendChild(track);
+    const b=el('button','action-btn','🎲 Roll!');
+    b.onclick=()=>{
+      const r=rand(1,6);pos[curPlayer]=Math.min(pos[curPlayer]+r,FINISH);
+      let msg=`🎲 ${r}! `;
+      if(specials[pos[curPlayer]]){const bonus=specials[pos[curPlayer]];pos[curPlayer]=Math.max(0,Math.min(pos[curPlayer]+bonus,FINISH));msg+=bonus>0?`⭐ Bonus +${bonus}!`:`💥 Setback ${bonus}!`}
+      if(pos[curPlayer]>=FINISH){updateScore(curPlayer,1);board.innerHTML=`<p style="font-size:1.3rem">${msg}</p>`;winScreen(`🏁 ${PN[curPlayer]} finishes first!`);return}
+      board.innerHTML=`<p style="font-size:1.1rem;margin:10px">${msg}</p>`;nextPlayer();setTimeout(render,1000);
+    };
+    board.appendChild(b);
+  }
+  render();
+}
+
+renderHub();
+</script>
+</body>
+</html>
